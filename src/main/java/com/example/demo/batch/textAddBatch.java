@@ -22,7 +22,7 @@ public class textAddBatch {
 			List<String[]> prefectureData = readData(
 					"https://techtech-sorae.com/wp-content/uploads/2021/07/pref_lat_lon.csv");
 			//ダウンロード先：https://nlftp.mlit.go.jp/cgi-bin/isj/dls/_view_cities_wards.cgi
-			List<String[]> municipalitiesData = readData("C:\\Users\\yuuta_000\\Downloads\\市区町村緯度経度_sjis.csv");
+			List<String[]> municipalitiesData = readData("ファイルのパス\\市区町村緯度経度_sjis.csv");
 			
 			List<String[]> newMunicipalitiesData = deleteMunicipalitiesData(municipalitiesData);
 			municipalitiesData = null;
@@ -31,7 +31,7 @@ public class textAddBatch {
 			List<String[]> institutionData = readDataAsShiftJis(
 					"https://www.opendata.metro.tokyo.lg.jp/suisyoudataset/130001_public_facility.csv");
 			//ダウンロード先:https://github.com/code4fukui/BaseRegistry/blob/main/%E8%A1%8C%E6%94%BF%E5%9F%BA%E6%9C%AC%E6%83%85%E5%A0%B1%E3%83%87%E3%83%BC%E3%82%BF%E9%80%A3%E6%90%BA%E3%83%A2%E3%83%87%E3%83%AB-POI%E3%82%B3%E3%83%BC%E3%83%89.md
-			List<String[]> poiData = readData("C:\\Users\\yuuta_000\\Downloads\\POIコード.csv");
+			List<String[]> poiData = readData("ファイルのパス\\POIコード.csv");
 			//用量削減
 			addressData = null;
 
