@@ -6,47 +6,49 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
+import java.text.ParseException;
 import java.util.*;
 
-public class textAddBatch {
 
+public class textAddBatch {
 	public static void main(String[] args) {
+		
 		try {
 			// データベースに接続するための情報を設定する
 			String url = "jdbc:postgresql://localhost:5432/data_processing";
 			String user = "postgres";
 			String password = "postgres";
 			Connection conn = DriverManager.getConnection(url, user, password);
-			
+
 			// CSVファイルを読み込む(いらない情報も消去)
 			List<String[]> prefectureData = readData(
 					"https://techtech-sorae.com/wp-content/uploads/2021/07/pref_lat_lon.csv");
-			//ダウンロード先：https://nlftp.mlit.go.jp/cgi-bin/isj/dls/_view_cities_wards.cgi
-			List<String[]> municipalitiesData = readData("ファイルのパス\\市区町村緯度経度_sjis.csv");
-			
+			// ダウンロード先：https://nlftp.mlit.go.jp/cgi-bin/isj/dls/_view_cities_wards.cgi
+			List<String[]> municipalitiesData = readData("C:\\Users\\yuuta_000\\Downloads\\市区町村緯度経度_sjis.csv");
+
 			List<String[]> newMunicipalitiesData = deleteMunicipalitiesData(municipalitiesData);
 			municipalitiesData = null;
 			List<String[]> addressData = readData("https://geolonia.github.io/japanese-addresses/latest.csv");
 			List<String[]> newAddressData = deleteAddressData(addressData);
 			List<String[]> institutionData = readDataAsShiftJis(
 					"https://www.opendata.metro.tokyo.lg.jp/suisyoudataset/130001_public_facility.csv");
-			//ダウンロード先:https://github.com/code4fukui/BaseRegistry/blob/main/%E8%A1%8C%E6%94%BF%E5%9F%BA%E6%9C%AC%E6%83%85%E5%A0%B1%E3%83%87%E3%83%BC%E3%82%BF%E9%80%A3%E6%90%BA%E3%83%A2%E3%83%87%E3%83%AB-POI%E3%82%B3%E3%83%BC%E3%83%89.md
-			List<String[]> poiData = readData("ファイルのパス\\POIコード.csv");
-			//用量削減
+			// ダウンロード先:https://github.com/code4fukui/BaseRegistry/blob/main/%E8%A1%8C%E6%94%BF%E5%9F%BA%E6%9C%AC%E6%83%85%E5%A0%B1%E3%83%87%E3%83%BC%E3%82%BF%E9%80%A3%E6%90%BA%E3%83%A2%E3%83%87%E3%83%AB-POI%E3%82%B3%E3%83%BC%E3%83%89.md
+			List<String[]> poiData = readData("C:\\Users\\yuuta_000\\Downloads\\POIコード.csv");
+			// 用量削減
 			addressData = null;
 
 			// データをデータベースに挿入する
-			//場所データ
-			insertPlaceData(prefectureData, newMunicipalitiesData, newAddressData, conn);
-			//施設データ
-			insertInstitutionsData(institutionData, poiData, conn);
+			// 場所データ
+			Map<String, Integer> addressMap = insertPlaceData(prefectureData, newMunicipalitiesData, newAddressData, conn);
+			// 施設データ
+			insertInstitutionsData(institutionData, poiData, conn,addressMap);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 
 	}
 
-	//データ読み込み(ダウンロードするCSVの読み込み型により条件分岐)
+	// データ読み込み(ダウンロードするCSVの読み込み型により条件分岐)
 	public static List<String[]> readData(String ex) throws IOException {
 		BufferedReader reader;
 		List<String[]> result = new ArrayList<>();
@@ -67,38 +69,41 @@ public class textAddBatch {
 		return result;
 	}
 
-	//該当ファイルのみ、表示の型と改行等が入っているため別処理を作成
+	// 該当ファイルのみ、表示の型と改行等が入っているため別処理を作成
 	public static List<String[]> readDataAsShiftJis(String ex) throws IOException {
-	    List<String[]> result = new ArrayList<>();
-	    BufferedReader reader = new BufferedReader(
-	            new InputStreamReader(new URL(ex).openStream(), Charset.forName("Shift-JIS")));
-	    String line;
-	    String beforeLine = "";
-	    boolean firstLine = true;
-	    while ((line = reader.readLine()) != null) {
-	        if (firstLine) {
-	            firstLine = false;
-	            continue;
-	        }
-	        //２列にわたって記載されているデータを結合
-	        if (!line.endsWith("28")) {
-	            beforeLine += line;
-	            continue;
-	        }
-	        line = beforeLine + line;
-	        String[] fields = line.split(",");
-	        result.add(fields);
-	        beforeLine = "";
-	    }
-	    reader.close();
-	    return result;
+		List<String[]> result = new ArrayList<>();
+		BufferedReader reader = new BufferedReader(
+				new InputStreamReader(new URL(ex).openStream(), Charset.forName("Shift-JIS")));
+		String line;
+		String beforeLine = "";
+		boolean firstLine = true;
+		while ((line = reader.readLine()) != null) {
+			if (firstLine) {
+				firstLine = false;
+				continue;
+			}
+			// ２列にわたって記載されているデータを結合
+			if (!line.endsWith("28")) {
+				beforeLine += line;
+				continue;
+			}
+			line = beforeLine + line;
+			String[] fields = line.split(",");
+			result.add(fields);
+			beforeLine = "";
+		}
+		reader.close();
+		return result;
 	}
 
-	//DBに場所データをinsertする
-	public static void insertPlaceData(List<String[]> prefactureData, List<String[]> municipalitiesData,
-			List<String[]> addressData, Connection conn) throws SQLException {
+	// DBに場所データをinsertする
+	public static Map<String, Integer>  insertPlaceData(List<String[]> prefactureData, List<String[]> municipalitiesData,
+			List<String[]> addressData, Connection conn) throws SQLException, ParseException {
 		boolean firstIteration = true;
+		Map<String, Integer> addressMap = new HashMap<String, Integer>();
 		createTabel(conn);
+		
+		//都道府県
 		PreparedStatement prepstmt = conn
 				.prepareStatement("INSERT INTO prefectures (name,longitude,latitude) VALUES (?,?,?) ;");
 		for (String[] fields : prefactureData) {
@@ -111,7 +116,7 @@ public class textAddBatch {
 			prepstmt.setBigDecimal(3, new BigDecimal(fields[2]));
 			prepstmt.executeUpdate();
 		}
-
+		//市区町村
 		PreparedStatement municipalpstmt = conn
 				.prepareStatement("INSERT INTO municipalities (name,longitude,latitude,parentNum) VALUES (?,?,?,?) ;");
 		Map<String, Integer> map = new HashMap<String, Integer>();
@@ -128,29 +133,38 @@ public class textAddBatch {
 			municipalpstmt.executeUpdate();
 			map.put(fields[4], count);
 		}
+		
+		//大字
 		PreparedStatement addresspstmt = conn
-				.prepareStatement("INSERT INTO address (name,longitude,latitude,parentNum) VALUES (?,?,?,?) ;");
+				.prepareStatement("INSERT INTO address (id,name,longitude,latitude,parentNum) VALUES (?,?,?,?,?) ;");
+		int numCount = 0;
 		for (String[] fields : addressData) {
-			addresspstmt.setString(1, fields[8].replaceAll("\"", ""));
+			numCount++;
+			addresspstmt.setInt(1, numCount);			
+			String address =fields[8].replaceAll("\"", "");
+			addresspstmt.setString(2, address);
 
 			if (fields.length >= 12) {
-				addresspstmt.setBigDecimal(2, new BigDecimal(fields[12]));
-				addresspstmt.setBigDecimal(3, new BigDecimal(fields[13]));
+				addresspstmt.setBigDecimal(3, new BigDecimal(fields[12]));
+				addresspstmt.setBigDecimal(4, new BigDecimal(fields[13]));
 			}
 			String key = fields[5].replaceAll("\"", "");
-			addresspstmt.setInt(4, map.get(key));
+			addresspstmt.setInt(5, map.get(key));
 			addresspstmt.executeUpdate();
+			
+			addressMap.put(convertHalfWidthNumber(address),numCount);	
+			 
 		}
-
+		return addressMap;
 	}
 
-	//DBに施設データをinsertする
-	public static void insertInstitutionsData(List<String[]> institutiosData, List<String[]> poiData, Connection conn)
-			throws SQLException {
+	// DBに施設データをinsertする
+	public static void insertInstitutionsData(List<String[]> institutiosData, List<String[]> poiData, Connection conn,Map<String, Integer> addresssMap )
+			throws SQLException, ParseException {
 		Map<String, Integer> map = new HashMap<String, Integer>();
 		boolean firstIteration = true;
 		PreparedStatement institutionpstmt = conn.prepareStatement(
-				"INSERT INTO institution (name,longitude,latitude,available_days,start_time,end_time,phone_number,address,postal_code,tag) VALUES (?,?,?,?,?,?,?,?,?,?) ;");
+				"INSERT INTO institution (name,longitude,latitude,available_days,start_time,end_time,phone_number,address,postal_code,tag,area) VALUES (?,?,?,?,?,?,?,?,?,?,?) ;");
 		PreparedStatement tagpstmt = conn.prepareStatement("INSERT INTO  tag_species (name) VALUES (?) ;");
 		int num = 1;
 		for (String[] fields : poiData) {
@@ -165,7 +179,7 @@ public class textAddBatch {
 		}
 
 		for (String[] fields : institutiosData) {
-			System.out.println(fields[5]+":"+fields[19]);
+			System.out.println(fields[5] + ":" + fields[19]);
 			institutionpstmt.setString(1, fields[4]);
 			institutionpstmt.setBigDecimal(2, new BigDecimal(fields[10]));
 			institutionpstmt.setBigDecimal(3, new BigDecimal(fields[11]));
@@ -176,11 +190,18 @@ public class textAddBatch {
 			institutionpstmt.setString(8, fields[8]);
 			institutionpstmt.setString(9, fields[24]);
 			institutionpstmt.setInt(10, map.get(fields[7].replaceAll("a", "")));
+			String convertAddress = convertHalfWidthNumber(fields[8]);
+			for(String address:addresssMap.keySet()) {
+			if(convertAddress.contains(address)) {
+			institutionpstmt.setInt(11, addresssMap.get(address));}} 
+				for(String address:addresssMap.keySet()) {
+					if(fields[8].contains(address)) {
+					institutionpstmt.setInt(11, addresssMap.get(address));}} 
 			institutionpstmt.execute();
 		}
 	}
 
-	//テーブルを作成するメソッド（既にある場合は一度消去）
+	// テーブルを作成するメソッド（既にある場合は一度消去）
 	public static void createTabel(Connection conn) throws SQLException {
 		String[] tableNames = { "prefectures", "municipalities", "address" };
 		for (int i = 0; i < tableNames.length; i++) {
@@ -208,7 +229,7 @@ public class textAddBatch {
 		deletePstmt.execute();
 		deletePstmt = conn.prepareStatement(deleteTagSql);
 		deletePstmt.execute();
-		String createInstitutionSql = "CREATE TABLE institution (id SERIAL PRIMARY KEY, name VARCHAR(255),longitude DECIMAL(9, 6), latitude DECIMAL(9, 6),available_days VARCHAR(255),start_time VARCHAR(255),end_time VARCHAR(255),phone_number VARCHAR(20),address VARCHAR(255),postal_code VARCHAR(10),tag VARCHAR(255));";
+		String createInstitutionSql = "CREATE TABLE institution (id SERIAL PRIMARY KEY, name VARCHAR(255),longitude DECIMAL(9, 6), latitude DECIMAL(9, 6),available_days VARCHAR(255),start_time VARCHAR(255),end_time VARCHAR(255),phone_number VARCHAR(20),address VARCHAR(255),postal_code VARCHAR(10),tag VARCHAR(255),area Integer);";
 		PreparedStatement institutionPstmt = conn.prepareStatement(createInstitutionSql);
 		institutionPstmt.execute();
 		String tagSql = "CREATE TABLE tag_species (id SERIAL PRIMARY KEY ,name VARCHAR(255));";
@@ -216,7 +237,7 @@ public class textAddBatch {
 		tagPstmt.execute();
 	}
 
-	//東京以外のデータを処理するメソッド
+	// 東京以外のデータを処理するメソッド
 	public static List<String[]> deleteMunicipalitiesData(List<String[]> datas) {
 		List<String[]> newData = new ArrayList<String[]>();
 		for (String[] data : datas) {
@@ -227,7 +248,7 @@ public class textAddBatch {
 		return newData;
 	}
 
-	//東京以外のデータを消去するメソッド
+	// 東京以外のデータを消去するメソッド
 	public static List<String[]> deleteAddressData(List<String[]> datas) {
 		List<String[]> newData = new ArrayList<String[]>();
 		for (String[] data : datas) {
@@ -237,6 +258,32 @@ public class textAddBatch {
 			}
 		}
 		return newData;
+	}
+
+	//全角数字変換
+	public static String convertHalfWidthNumber(String data)  {
+	    data = data.replace("0", "０")
+	               .replace("1", "１")
+	               .replace("2", "２")
+	               .replace("3", "３")
+	               .replace("4", "４")
+	               .replace("5", "５")
+	               .replace("6", "６")
+	               .replace("7", "７")
+	               .replace("8", "８")
+	               .replace("9", "９")
+	               .replace("一", "１")
+	               .replace("二", "２")
+	               .replace("三", "３")
+	               .replace("四", "４")
+	               .replace("五", "５")
+	               .replace("六", "６")
+	               .replace("七", "７")
+	               .replace("八", "８")
+	               .replace("九", "９")
+	              .replace("丁目","");
+	 
+		return data;
 	}
 
 }
